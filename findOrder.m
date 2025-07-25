@@ -1,59 +1,67 @@
 function [order] = findOrder(noisy)
-    % % Read the WAV file
-    % [noisy, fs] = audioread(wavFilePath);
-    
-    % % Convert stereo to mono if necessary
-    % if size(noisy, 2) == 2
-    %     noisy = mean(noisy, 2);
-    % end
-    
-    % Segment the noisy signal into frames
-    frameSize = 256; % Example frame size
-    totseg = floor(length(noisy) / frameSize);
-    noisyFrames = reshape(noisy(1:totseg*frameSize), frameSize, totseg)';
-    
-    order = zeros(totseg, 1);
-    % We assume maximum order to be 100
-    T = 100;
+% Estimate LPC order for each frame of a noisy speech signal using PACF
+% Input:
+%   noisy     - Noisy speech signal (mono)
+% Output:
+%   order     - Estimated LPC order per frame
+% Optional:
+%   plotFlag  - Set to true to enable PACF plots for selected frames
 
-    for i = 1:totseg
-        [arcoefs, noisevar, reflection_coefs] = aryule(noisyFrames(i, :), T);
-        pacf = -reflection_coefs;
-        cpacf = cumsum(abs(pacf));
-        % Estimated order = lag at which CPACF is 70% of range of CPACF
-        dist = abs(cpacf - 0.7 * (range(cpacf)));
-        [~, minIndex] = min(dist);
-        order(i) = minIndex;
+% --- Configuration ---
+plotFlag = false;         % Toggle plotting ON/OFF
+frameSize = 256;         % Frame size in samples
+maxOrder = 100;          % Maximum LPC order to test
 
-        % if i == 4 || i == totseg - 1
-        %     if i == 4
-        %         figure(5);
-        %         heading = 'PACF plot for Voiced Frame';
-        %     else
-        %         figure(6);
-        %         heading = 'PACF plot for Silent Frame';
-        %     end
-        %     title(heading);
-        %     subplot(211);
-        %     stem(pacf, 'filled', 'MarkerSize', 4);
-        %     xlabel('Lag'); ylabel('Partial Autocorrelation coefficients');
-        %     xlim([1 T]);
-        %     uconf = 1.96 / sqrt(size(noisyFrames, 2));
-        %     lconf = -uconf;
-        %     hold on;
-        %     plot([1 T], [1 1]' * [lconf uconf], 'r');
-        %     hold off;
-        %     subplot(212);
-        %     text = ['Estimated order = ', num2str(order(i))];
-        %     stem(cpacf, 'filled', 'MarkerSize', 4); xlabel('Lag'); ylabel('Cumulative PACF'); title(text);
-        %     grid on;
-        %     hold on;
-        %     plot(0.7 * range(cpacf) * ones(1, T), 'r');
-        %     hold off;
-        %     xlabel('Lags'); ylabel('Cumulative PACF');
-        % end
+% --- Frame segmentation ---
+totseg = floor(length(noisy) / frameSize);  % Total number of full frames
+noisyFrames = reshape(noisy(1:totseg * frameSize), frameSize, totseg)';  % Frame matrix
+
+order = zeros(totseg, 1);  % Preallocate order array
+
+% --- LPC order estimation loop ---
+for i = 1:totseg
+    % Estimate LPC coefficients using Yule-Walker method
+    [~, ~, reflection_coefs] = aryule(noisyFrames(i, :), maxOrder);
+    
+    % Compute PACF and cumulative PACF
+    pacf = -reflection_coefs;
+    cpacf = cumsum(abs(pacf));
+    
+    % Estimate order: lag where CPACF reaches 70% of its range
+    target = 0.7 * range(cpacf);
+    [~, minIndex] = min(abs(cpacf - target));
+    order(i) = minIndex;
+
+    % --- Optional plotting for selected frames ---
+    if plotFlag && (i == 4 || i == totseg - 1)
+        figure;
+        if i == 4
+            heading = 'PACF plot for Voiced Frame';
+        else
+            heading = 'PACF plot for Silent Frame';
+        end
+        sgtitle(heading);
+
+        % Plot PACF
+        subplot(2,1,1);
+        stem(pacf, 'filled', 'MarkerSize', 4);
+        xlabel('Lag'); ylabel('PACF Coefficients');
+        xlim([1 maxOrder]);
+        uconf = 1.96 / sqrt(frameSize);  % Confidence bounds
+        hold on;
+        plot([1 maxOrder], [1 1]' * [uconf -uconf], 'r');
+        hold off;
+
+        % Plot CPACF
+        subplot(2,1,2);
+        stem(cpacf, 'filled', 'MarkerSize', 4);
+        hold on;
+        plot(0.7 * range(cpacf) * ones(1, maxOrder), 'r');
+        hold off;
+        xlabel('Lag'); ylabel('Cumulative PACF');
+        title(['Estimated order = ', num2str(order(i))]);
+        grid on;
     end
+end
 
-    % saveas(figure(5), [saveToPath, 'PACF_plot_voiced_frame_', type, '_', num2str(dB), 'dB']);
-    % saveas(figure(6), [saveToPath, 'PACF_plot_silent_frame_', type, '_', num2str(dB), 'dB']);
 end
