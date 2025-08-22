@@ -70,28 +70,34 @@ def process(y, sr, file_name, subdir):
     return reconstructed_audio
 
 
-
-
-audio_data = {}  # Dictionary to store filename and audio contents
+audio_data = {}
 
 for subdir, dirs, files in os.walk('./NOIZEUS/'):
-    for file in files:
-        if file.endswith('.wav'):
-            file_path = os.path.join(subdir, file)
-            data, sr = librosa.load(file_path)
-            audio_data[file] = {
-                'sample_rate': sr,
-                'data': data
-            }
-            # Process each audio file
-            print(f"Processing {file}...")
-            reconstructed_audio = process(data, sr, file, subdir)
-            print(f"Finished processing {file}. Saved output to: {os.path.join(subdir.replace('NOIZEUS', 'gla'), file)}")\
-    
-            # Save the reconstructed audio
-            gla_dir = os.path.join(subdir.replace('NOIZEUS', 'gla'))
-            os.makedirs(gla_dir, exist_ok=True)
+    if os.path.basename(subdir) == 'kalm':
+        print(f"Visiting: {subdir}")
+        for file in files:
+            if file.endswith('_kalm.wav'):
+                file_path = os.path.join(subdir, file)
+                data, sr = librosa.load(file_path)
+                audio_data[file] = {
+                    'sample_rate': sr,
+                    'data': data
+                }
 
-            # Save using the original filename into gla/
-            save_path = os.path.join(gla_dir, file)
-            sf.write(save_path, reconstructed_audio, sr)
+                print(f"Processing {file}...")
+                reconstructed_audio = process(data, sr, file, subdir)
+                print(f"Finished processing {file}.")
+
+                # Build the output path by replacing 'NOIZEUS' with 'part2' and 'kalm' with 'gla'
+                output_dir = subdir.replace('NOIZEUS', 'part2').replace('kalm', 'gla')
+                os.makedirs(output_dir, exist_ok=True)
+
+                # Replace '_kalm.wav' with '_gla.wav' in filename
+                gla_filename = file.replace('_kalm.wav', '_gla.wav')
+                save_path = os.path.join(output_dir, gla_filename)
+
+                # Save the reconstructed audio
+                sf.write(save_path, reconstructed_audio, sr)
+                print(f"Saved output to: {save_path}")
+
+

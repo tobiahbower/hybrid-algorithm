@@ -20,9 +20,8 @@ def calculate_pesq_score(x, y):
     return score
 
 
-
-results_wav = []
-base_dir = './gla'  # Root directory containing folders like 'airport_0dB'
+results_kalm = []
+base_dir = './day2'  # Root directory containing folders like 'airport_0dB'
 
 for speech_dir in os.listdir(base_dir):
     wav_folder = os.path.join(base_dir, speech_dir, 'wav')
@@ -36,18 +35,18 @@ for speech_dir in os.listdir(base_dir):
 
                 try:
                     score = calculate_pesq_score(ref_file, wav_file)
-                    results_wav.append([file, wav_file, ref_file, score])
+                    results_kalm.append([file, wav_file, ref_file, score])
                 except Exception as e:
                     print(f"Error processing {file}: {e}")
-                    results_wav.append([file, wav_file, ref_file, f"Error: {e}"])
+                    results_kalm.append([file, wav_file, ref_file, f"Error: {e}"])
 
 # Save wav results
-with open('pesq_scores_wav.csv', mode='w', newline='') as f:
+with open('./pesq_scores_kalm1.csv', mode='w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(['Filename', 'WAV Path', 'NOIZEUS Path', 'PESQ Score'])
-    writer.writerows(results_wav)
+    writer.writerows(results_kalm)
 
-results_kalm = []
+results_gla = []
 
 for speech_dir in os.listdir(base_dir):
     kalm_folder = os.path.join(base_dir, speech_dir, 'kalm')
@@ -62,13 +61,13 @@ for speech_dir in os.listdir(base_dir):
 
                 try:
                     score = calculate_pesq_score(ref_file, kalm_file)
-                    results_kalm.append([file, kalm_file, ref_file, score])
+                    results_gla.append([file, kalm_file, ref_file, score])
                 except Exception as e:
                     print(f"Error processing {file}: {e}")
-                    results_kalm.append([file, kalm_file, ref_file, f"Error: {e}"])
+                    results_gla.append([file, kalm_file, ref_file, f"Error: {e}"])
 
 # Save kalm results
-with open('pesq_scores_kalm.csv', mode='w', newline='') as f:
+with open('./pesq_scores_gla2.csv', mode='w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(['Filename', 'Kalm Path', 'NOIZEUS Path', 'PESQ Score'])
-    writer.writerows(results_kalm)
+    writer.writerows(results_gla)
