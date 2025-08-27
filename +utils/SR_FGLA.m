@@ -34,8 +34,8 @@ function [S_out, y_out] = SR_FGLA(magnitude, S_in, prevS, alpha, lambda, win, ho
     S_out = (1 / (1 + lambda)) * (S_momentum + (lambda / (1 + lambda)) * magnitude .* phase);
 end
 
-function S_sym = enforceHermitian(S)
-    % Assumes S is one-sided (e.g., 0 to N/2)
-    N = size(S, 1);
-    S_sym = [S; conj(flipud(S(2:end-1, :)))]; % Reconstruct full spectrum
-end
+% function S_sym = enforceHermitian(S)
+%     % Assumes S is one-sided (e.g., 0 to N/2)
+%     N = size(S, 1);
+%     S_sym = [S; conj(flipud(S(2:end-1, :)))]; % Reconstruct full spectrum
+% end

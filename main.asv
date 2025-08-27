@@ -2,7 +2,7 @@ clear all; clc;
 addpath(genpath(pwd));
 
 % === Optimization Parameters ===
-n_iter = 10;               % Number of hybrid algorithm iterations
+n_iter = 100;               % Number of hybrid algorithm iterations
 l = 128;                     % Window length / FFT length
 m = 128;                     % Number of Mel bands
 w = hann(l, 'periodic');     % STFT window
@@ -10,26 +10,34 @@ alpha = 0.5;                % Momentum convergence parameter
 lambda = 0.1;                % Magnitude stability enforcer
 
 % === Load Audio ===
-[x, fs] = audioread("./samples/billy-inputs/billy_inp.wav");
-% [x,fs] = audioread('.\..\sre-research\db-noizeus_corpora\NOIZEUS\airport_15dB\wav\sp01_airport_sn15.wav');
+% [x, fs] = audioread("./samples/billy-inputs/billy_inp.wav");
+[x,fs] = audioread('.\..\sre-research\db-noizeus_corpora\NOIZEUS\airport_0dB\wav\sp01_airport_sn0.wav');
 
 
-% Find the first non-zero index
-first_nonzero = find(x ~= 0, 1, 'first');
+x = x(:);
+% Find the index of the first non-zero element
+firstNonZero = find(x ~= 0, 1, 'first');
 
 % Trim leading zeros
-x = x(first_nonzero:end);
-
+if isempty(firstNonZero)
+    x = [];  % All elements are zero
+else
+    x = x(firstNonZero:end);
+end
 
 % PESQ is designed for 8000Hz
 x = resample(x, 8000, fs);
 fs = 8000;
+% figure(100); plot(x); hold on;
 
 % TRY reverse hybrid - apply Kalamn denoising first
-x = utils.SE_Kalman(x, 2, fs);
+% kalman = utils.SE_Kalman_Filter(fs);
+% x = kalman.enhance(x,1);
+% plot(x); hold off;
 
 % === LPC Order Estimation ===
-x_order = utils.LPC_PACF(x);  % Custom utility for order estimation
+order = utils.LPC_PACF_Order_Estimator(x);
+x_order = order.estimateOrder();
 
 % === One-Sided STFT ===
 [X_STFT, f_spectrum_eval, t_overlap_eval] = stft(x, fs, ...
@@ -65,7 +73,6 @@ for i = 1:n_iter
     % --- Speech Reconstruction ---
     [Y_recon, y_recon] = utils.SR_FGLA(X_STFT_magnitude, S_in, S_prev, alpha, lambda, win, hop);
 
-
     % y_recon = utils.SE_Kalman(real(x_recon), 2, 8000);
 
     % --- Update STFT State ---
@@ -81,26 +88,21 @@ end
 
 % Spectral convergence
 figure(5);
-plot(1:n_iter, convergence_error, 'LineWidth', 2, 'DisplayName', sprintf('%d',alpha));
-xlabel('Iteration');
-ylabel('Relative Reconstruction Error');
-title('Convergence of SR\_FGLA Algorithm');
+plot(1:n_iter, convergence_error, 'DisplayName', sprintf('\alpha=%d',alpha));
+hold on;
+xlabel('iteration');
+ylabel('residual stft');
+title('spectral convergence SR\_FGLA');
 grid on;
 
 % === Clean Spike Artifact ===
 y_recon(end) = NaN;
+y_recon(1) = NaN;
 
 % === Resample y_recon to match x length ===
 y_recon_real = real(y_recon);  % Remove imaginary part
 y_recon_resampled = resample(y_recon_real, length(x), length(y_recon_real));  % Match length
 
-% === Plot Comparison ===
-figure;
-plot(x, 'b'); hold on;
-plot(y_recon_resampled, 'r');
-legend('x', 'y\_recon');
-xlabel('sample'); ylabel('amplitude');
-
-% === Optional Listening ===
-% soundsc(x, fs);
-% soundsc(y_recon_resampled, fs);
+order = utils.LPC_PACF_Order_Estimator(y_recon_resampled);
+y_recon_resampled_order = order.estimateOrder();
+order.plotPACF(order.noisySignal);
