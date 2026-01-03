@@ -1,4 +1,4 @@
-function plotVAD(x, fs, vadFuncHandle, figNum)
+function plotVAD(x, fs, vadFuncHandle, figNum, negOpt)
 % plotVAD Visualizes a signal and its VAD output
 %
 % Inputs:
@@ -21,16 +21,26 @@ function plotVAD(x, fs, vadFuncHandle, figNum)
     result = vadFuncHandle(x, fs, x_len);
 
     % Plot
-    figure(figNum); clf;
-    p1 = plot(t, x, 'Color', [0 .4 .7]); % Light blue signal
-    hold on;
-    p2 = plot(t, result * 0.3, 'r-', 'LineWidth', 1.2); % VAD overlay
+    figure(figNum);
+    % subplot(2,1,subplotPanel)
+    
+    if negOpt
+        contour = result * 0.3;
+        plot(t, contour, 'r-', 'LineWidth', 1.5); % VAD overlay
+        plot(t, x, 'Color', [0 .4 .7], 'LineWidth', 0.5); % Light orange signal
+        hold on;
+    else
+        contour = -1*(result * 0.3);
+        plot(t, x, 'Color', [.7 .4 0], 'LineWidth', 0.5); % Light blue signal
+        hold on;
+        plot(t, contour, 'r-', 'LineWidth', 1.5); % VAD overlay
+    end
 
     % Styling
-    set(gca, 'Color', 'k');
-    ylim([-0.3 1]);
+    % set(gca, 'Color', 'k');
+    % ylim([-0.3 1]);
     xlim([0 t(end)]);
-    title('Signal with VAD Overlay');
+    % title('Signal with VAD Overlay');
     xlabel('Time (s)');
     legend({'Signal', 'VAD'}, 'TextColor', 'w');
 end

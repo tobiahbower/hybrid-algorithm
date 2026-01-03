@@ -47,27 +47,28 @@ classdef LPC_PACF_Order_Estimator
             cpacf = cumsum(abs(pacf));
             estOrder = find(abs(cpacf - 0.7 * range(cpacf)) == min(abs(cpacf - 0.7 * range(cpacf))), 1);
 
-            figure;
             sgtitle(['PACF Analysis for Frame ', num2str(frameIndex)]);
 
             % PACF plot
             subplot(2,1,1);
-            stem(pacf, 'filled', 'MarkerSize', 4);
+            % stem(pacf, 'filled', 'MarkerSize', 4);
+            plot(pacf, 'LineWidth',3);
             xlabel('Lag'); ylabel('PACF Coefficients');
             xlim([1 obj.maxOrder]);
             uconf = 1.96 / sqrt(obj.frameSize);
             hold on;
-            plot([1 obj.maxOrder], [1 1]' * [uconf -uconf], 'r');
-            hold off;
+            % plot([1 obj.maxOrder], [1 1]' * [uconf -uconf], 'r');
+            % hold off;
 
             % CPACF plot
             subplot(2,1,2);
-            stem(cpacf, 'filled', 'MarkerSize', 4);
+            % stem(cpacf, 'filled', 'MarkerSize', 4);
+            plot(cpacf, 'LineWidth', 3);
             hold on;
-            plot(0.7 * range(cpacf) * ones(1, obj.maxOrder), 'r');
-            hold off;
+            % plot(0.7 * range(cpacf) * ones(1, obj.maxOrder), 'r');
+            % hold off;
             xlabel('Lag'); ylabel('Cumulative PACF');
-            title(['Estimated order = ', num2str(estOrder)]);
+            % title(['Estimated order = ', num2str(estOrder)]);
             grid on;
         end
     end

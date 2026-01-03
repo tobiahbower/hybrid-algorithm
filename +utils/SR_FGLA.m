@@ -1,4 +1,4 @@
-function [S_out, y_out] = SR_FGLA(magnitude, S_in, prevS, alpha, lambda, win, hop)
+function [S_out, y_out] = SR_FGLA(magnitude, S_in, prevS, fs, alpha, lambda, win, hop)
 %SR_FGLA_STEP Performs one iteration of Griffin-Lim with momentum and smoothing
 %   [S_out, y_out] = SR_FGLA_step(magnitude, S_in, prevS, alpha, lambda)
 %   magnitude : input magnitude spectrogram
@@ -24,6 +24,7 @@ function [S_out, y_out] = SR_FGLA(magnitude, S_in, prevS, alpha, lambda, win, ho
     imagEnergyRatio = norm(imag(y_out)) / norm(y_out);
 
     phase = exp(1i * angle(S_new));
+    
     if size(phase, 1) == 256
         phase = [phase; zeros(1, size(phase, 2))];
     end
@@ -32,6 +33,9 @@ function [S_out, y_out] = SR_FGLA(magnitude, S_in, prevS, alpha, lambda, win, ho
     S_momentum = alpha * prevS + (1 - alpha) * S_est;
 
     S_out = (1 / (1 + lambda)) * (S_momentum + (lambda / (1 + lambda)) * magnitude .* phase);
+    
+    % model = load('C:\Users\Toby\Documents\MATLAB\enhanceSpeech\enhanceSpeech\metricgan-okd.mat');
+    % y_out = model.enhanceSpeech(y_out, fs);
 end
 
 % function S_sym = enforceHermitian(S)

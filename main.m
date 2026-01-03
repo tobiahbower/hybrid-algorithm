@@ -1,17 +1,39 @@
 clear all; clc;
 addpath(genpath(pwd));
+addpath('C:\Users\Toby\Documents\MATLAB\enhanceSpeech\enhanceSpeech');
+model = load('metricgan-okd.mat');
+
+tempdir = pwd;
+downloadFolder = fullfile(tempdir,"enhanceSpeechDownload");
+loc = websave(downloadFolder,"https://ssd.mathworks.com/supportfiles/audio/enhanceSpeech.zip");
+modelsLocation = tempdir;
+unzip(loc,modelsLocation)
+addpath(fullfile(modelsLocation,"enhanceSpeech"))
+
+set(0, 'defaultLegendInterpreter', 'latex');
+
+denoise = true;
+plotBool = true;
 
 % === Optimization Parameters ===
-n_iter = 100;               % Number of hybrid algorithm iterations
-l = 128;                     % Window length / FFT length
-m = 128;                     % Number of Mel bands
-w = hann(l, 'periodic');     % STFT window
-alpha = 0.5;                % Momentum convergence parameter
-lambda = 0.1;                % Magnitude stability enforcer
+n_iter = 150;               % Number of hybrid algorithm iterations
+l = 128;                    % Window length / FFT length
+m = 128;                    % Number of Mel bands
+w = hann(l, 'periodic');    % STFT window
+alpha = 0.01;                % Momentum convergence parameter
+lambda = 0.001;              % Magnitude stability enforcer
+
+noizeus = '.\..\sre-research\db-noizeus_corpora\NOIZEUS\';
+
+%% pre-allocation
+convergence_error_db = nan(1,n_iter);
 
 %% Load
 % [x, fs] = audioread("./samples/billy-inputs/billy_inp.wav");
-[x,fs] = audioread('.\..\sre-research\db-noizeus_corpora\NOIZEUS\airport_0dB\wav\sp01_airport_sn0.wav');
+noisyfile = [noizeus 'airport_5dB\wav\sp01_airport_sn5.wav'];
+cleanfile = [noizeus, 'clean_noizeus\wav\sp01.wav'];
+[x, fs] = audioread(noisyfile);
+[ref, ~] = audioread(cleanfile);
 
 x = x(:);
 % Find the index of the first non-zero element
@@ -24,45 +46,56 @@ else
     x = x(firstNonZero:end);
 end
 
-% PESQ is designed for 8000Hz
+%% MOS
+% it is designed for 8000Hz, so resample
 x = resample(x, 8000, fs);
 fs = 8000;
 % figure(100); plot(x); hold on;
+% x_pesq = utils.MOS_PESQ(x, ref, fs);
+x_stoi = stoi(x, ref, fs)
+x_visqol = visqol(x, ref, fs, Mode='speech')
+mypesq = pesq.calc_pesq('pesq2.exe', noizeus,  'clean_noizeus\wav\sp01.wav', 'airport_5dB\wav\sp01_airport_sn5.wav', fs, 'nb');
+x_pesq = mypesq.computeScores()
+utils.Mel_Spectrogram(x, fs, l, m, w, 1, plotBool);
 
 %% Plot a VAD
-x_norm = x / max(abs(x));
-vad.plotVAD(x_norm, fs, @vad.vad1);
-
-%% Reverse hybrid - apply Kalamn denoising first
-% kalman = utils.SE_Kalman_Filter(fs);
-% x = kalman.enhance(x,1);
-% plot(x); hold off;
+if plotBool
+    x_norm = x / max(abs(x));
+    vad.plotVAD(x_norm, fs, @vad.vad1, 82, 0);
+end
 
 %% === LPC Order Estimation ===
 xorder = utils.LPC_PACF_Order_Estimator(x);
 x_order = xorder.estimateOrder();
-xorder.plotPACF(2);
+if plotBool
+    figure(77);
+    clf;
+    xorder.plotPACF(2);
+end
 
-%% === One-Sided STFT ===
-[X_STFT, f_spectrum_eval, t_overlap_eval] = stft(x, fs, ...
-    'Window', w, ...
-    'OverlapLength', l/2, ...
-    'FFTLength', l*4, ...
-    'FrequencyRange', 'onesided');
+%% Reverse hybrid - apply Kalamn denoising first
+if denoise
+    kalman = utils.SE_Kalman_Filter(fs, ceil(mean(x_order)));
+    % x_denoised = enhanceSpeech(x, fs);
+    x_denoised = kalman.enhance(x,10);
 
-X_STFT_magnitude = abs(X_STFT);                     % Magnitude spectrum
-num_STFT_bins = size(X_STFT_magnitude, 1);          % Should be l/2 + 1 = 257
+    % lowpass
+    % x_denoised = lowpass(x_denoised, 2000, fs, 'Steepness', 0.5);  % Apply lowpass filter to remove high-frequency noise
 
-% === Mel Filter Bank Design ===
-X_mel_filter_bank = designAuditoryFilterBank(num_STFT_bins, ...
-    'FFTLength', l*4, ...
-    'NumBands', m, ...
-    'FrequencyScale', 'mel');
+    x_denoised_stoi = stoi(x_denoised, ref, fs)
+    x_denoised_visqol = visqol(x_denoised, ref, fs, Mode='speech')
 
-% === Mel Spectrogram Computation ===
-X_mel_spectrogram = X_mel_filter_bank * X_STFT_magnitude;
-X_mel_spectrogram_dB = 10 * log10(X_mel_spectrogram + eps);  % Log compression
+    audiowrite([noizeus 'x_denoised.wav'], x_denoised, fs);
+    mypesq = pesq.calc_pesq('pesq2.exe', noizeus,  'clean_noizeus\wav\sp01.wav', 'x_denoised.wav', fs, 'nb');
+    x_denoised_pesq = mypesq.computeScores()
+else
+    x_denoised = x;
+end
 
+%% Mel Spectrogram
+[X_STFT_magnitude, ~, ~, ~] = utils.Mel_Spectrogram(x_denoised, fs, l, m, w, 2, plotBool);
+
+%% prep algorithm
 % === Initialize STFT State ===
 S_in = X_STFT_magnitude .* exp(1i * 2 * pi * rand(size(X_STFT_magnitude)));  % Initial phase
 S_prev = S_in;                % Previous iteration state
@@ -76,7 +109,7 @@ convergence_error = zeros(n_iter, 1);  % Preallocate error vector
 % === Hybrid Griffin-Lim + Kalman Enhancement Loop ===
 for i = 1:n_iter
     % --- Speech Reconstruction ---
-    [Y_recon, y_recon] = utils.SR_FGLA(X_STFT_magnitude, S_in, S_prev, alpha, lambda, win, hop);
+    [Y_recon, y_recon] = utils.SR_FGLA_full(X_STFT_magnitude, S_in, S_prev, fs, alpha, lambda, win, hop);
 
     % y_recon = utils.SE_Kalman(real(x_recon), 2, 8000);
 
@@ -88,18 +121,26 @@ for i = 1:n_iter
     error = norm(current_magnitude - X_STFT_magnitude, 'fro') / norm(X_STFT_magnitude, 'fro');
     convergence_error(i) = error;
 
+    % Convert to logarithmic decibel scale
+    convergence_error_db(i) = 20 * log10(error);
+
     fprintf('Iter: %d/%d\n', i, n_iter);
 end
 
-%% Analysis 
+%% Analysis
 % Spectral convergence
-figure(5);
-plot(1:n_iter, convergence_error, 'DisplayName', sprintf('\alpha=%d',alpha));
-hold on;
-xlabel('iteration');
-ylabel('residual stft');
-title('spectral convergence SR\_FGLA');
-grid on;
+if plotBool
+    figure(5);
+    if denoise
+        plot(1:n_iter, convergence_error_db, 'DisplayName', sprintf('$\alpha$=%.3f, $\lambda$=%.3f',alpha, lambda), 'LineWidth',2.25);
+    else
+        plot(1:n_iter, convergence_error_db, 'DisplayName', sprintf('$\alpha$=%.3f, $\lambda$=%.3f',alpha, lambda), 'LineWidth',2.25, 'LineStyle','--');
+    end
+    hold on;
+    xlabel('Iteration');
+    ylabel('SCM');
+    legend;
+end
 
 % === Clean Spike Artifact ===
 y_recon(end) = NaN;
@@ -109,12 +150,15 @@ y_recon(1) = NaN;
 y_recon_real = real(y_recon);  % Remove imaginary part
 y_recon_resampled = resample(y_recon_real, length(x), length(y_recon_real));  % Match length
 
-% order estimator
+%% order estimator
 yorder = utils.LPC_PACF_Order_Estimator(y_recon_resampled);
 y_recon_resampled_order = yorder.estimateOrder();
+figure(77);
 yorder.plotPACF(2);
+subplot(2,1,2);
+title(sprintf('Enhanced Order: %1.0f, Reconstructed Order: %1.0f', mean(x_order), mean(y_recon_resampled_order(2:end-1))));
 
-% VAD in post
+%% VAD in post
 % Remove leading and trailing NaNs
 firstValid = find(~isnan(y_recon_resampled), 1, 'first');
 lastValid  = find(~isnan(y_recon_resampled), 1, 'last');
@@ -124,5 +168,91 @@ y_recon_resampled_norm = y_recon_resampled_clean / max(abs(y_recon_resampled_cle
 % rms_orig = sqrt(mean(y_recon_resampled_clean.^2));
 % rms_denoised = sqrt(mean(y_recon_resampled_clean.^2));
 % y_recon_resampled_norm = y_recon_resampled_clean * (rms_orig / rms_denoised);
-vad.plotVAD(y_recon_resampled_norm, fs, @vad.vad1, 83);
 
+if plotBool
+    vad.plotVAD(y_recon_resampled_norm, fs, @vad.vad1, 82, 1);
+end
+figure(82);
+residual_recon = y_recon_resampled'-x_denoised;
+t = (1:length(residual_recon)) ./ fs;
+% plot(t, residual_recon, 'LineWidth', 0.25, 'Color', [0 1 0]);
+
+
+%% MOS
+% utils.MOS_PESQ(x, ref, fs);
+% utils.MOS_STOI(x, ref, fs);
+y_recon_resampled_clean_stoi = stoi(y_recon_resampled_clean, ref(1:length(y_recon_resampled_clean)), fs)
+y_recon_resampled_clean_visqol = visqol(y_recon_resampled_clean, ref(1:length(y_recon_resampled_clean)), fs, Mode='speech')
+audiowrite([noizeus 'y_recon.wav'], y_recon_resampled, fs);
+mypesq = pesq.calc_pesq('pesq2.exe', noizeus,  'clean_noizeus\wav\sp01.wav', 'y_recon.wav', fs, 'nb');
+x_pesq = mypesq.computeScores()
+
+%% Visual Mel Spectrogram after alrogithm
+
+utils.Mel_Spectrogram(y_recon_resampled_clean, fs, l, m, w, 3, plotBool);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%% Comparison of built in
+% === MATLAB Built-in STFT Reconstruction (stftmag2sig) ===
+% Use the same magnitude and window parameters
+% [y_builtin, ~] = stftmag2sig(X_STFT_magnitude, fs, ...
+%     'Window', w, ...
+%     'OverlapLength', hop/2,...
+%     MaxIterations=n_iter,...
+%     InitializePhaseMethod='random');
+% 
+% % Trim and normalize
+% y_builtin = y_builtin(:);
+% y_builtin_clean = y_builtin(firstNonZero:end);  % Match trimming
+% y_builtin_clean = y_builtin_clean / max(abs(y_builtin_clean));  % Normalize
+% 
+% % === Objective Metrics ===
+% y_builtin_stoi = stoi(y_builtin_clean, ref(1:length(y_builtin_clean)), fs);
+% y_builtin_visqol = visqol(y_builtin_clean, ref(1:length(y_builtin_clean)), fs, Mode='speech');
+% audiowrite([noizeus 'y_builtin.wav'], y_builtin_clean, fs);
+% mypesq_builtin = pesq.calc_pesq('pesq2.exe', noizeus, ...
+%     'clean_noizeus\wav\sp01.wav', 'y_builtin.wav', fs, 'nb');
+% y_builtin_pesq = mypesq_builtin.computeScores();
+% 
+% % === Plot Comparison ===
+% if plotBool
+%     figure(101);
+%     subplot(2,1,1);
+%     plot(y_recon_resampled_clean, 'b'); hold on;
+%     plot(y_builtin_clean, 'r');
+%     legend('Hybrid FGLA+Kalman', 'MATLAB stftmag2sig');
+%     title('Waveform Comparison');
+%     xlabel('Samples'); ylabel('Amplitude');
+% 
+%     subplot(2,1,2);
+%     plot(abs(y_recon_resampled_clean - ref(1:length(y_recon_resampled_clean))), 'b'); hold on;
+%     plot(abs(y_builtin_clean - ref(1:length(y_builtin_clean))), 'r');
+%     legend('Hybrid Error', 'Built-in Error');
+%     title('Absolute Error vs Clean Reference');
+%     xlabel('Samples'); ylabel('Error Magnitude');
+% end

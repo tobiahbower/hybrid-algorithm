@@ -1,44 +1,28 @@
-function score = MOS_PESQ(xPath, yPath)
-%CALCULATE_PESQ_SCORE Computes PESQ score between two audio files
-%   score = calculate_pesq_score(xPath, yPath)
-%   xPath : path to reference audio file
-%   yPath : path to degraded audio file
+function score = calculate_pesq(referenceAudio, degradedAudio, fs, mode)
+%CALCULATE_PESQ Computes PESQ score between two audio signals
+%   score = calculate_pesq(referenceAudio, degradedAudio, fs, mode)
+%   referenceAudio : reference audio signal (vector)
+%   degradedAudio : degraded audio signal (vector)
+%   fs : integer, sampling rate (e.g., 16000)
+%   mode : 'wb' for wide-band or 'nb' for narrow-band
 
-    sr_pesq_req = 16000;  % Required sampling rate for wideband PESQ
-
-    % Load and resample audio
-    [X, fsX] = audioread(xPath);
-    [Y, fsY] = audioread(yPath);
-
-    if fsX ~= sr_pesq_req
-        X = resample(X, sr_pesq_req, fsX);
-    end
-    if fsY ~= sr_pesq_req
-        Y = resample(Y, sr_pesq_req, fsY);
+    if nargin < 4
+        mode = 'wb'; % Default to wide-band
     end
 
-    % Convert to mono if needed
-    if size(X, 2) > 1
-        X = mean(X, 2);
+    % Normalize audio signals
+    max_val = max(max(abs(referenceAudio)), max(abs(degradedAudio)));
+    referenceAudio = referenceAudio / max_val; % Normalize
+    degradedAudio = degradedAudio / max_val; % Normalize
+
+    % Convert to int16 format for PESQ calculation
+    referenceAudio_int16 = int16(referenceAudio * 32767);
+    degradedAudio_int16 = int16(degradedAudio * 32767);
+
+    % Call PESQ function directly if available in your MATLAB environment
+    if strcmp(mode, 'wb')
+        score = utils.pesq(fs, referenceAudio_int16, degradedAudio_int16, 'wb');
+    else
+        score = utils.pesq(fs, referenceAudio_int16, degradedAudio_int16, 'nb');
     end
-    if size(Y, 2) > 1
-        Y = mean(Y, 2);
-    end
-
-    % Convert to int16 format
-    X_int16 = int16(X * 32767);
-    Y_int16 = int16(Y * 32767);
-
-    % Save temp WAV files
-    audiowrite('ref.wav', X_int16, sr_pesq_req, 'BitsPerSample', 16);
-    audiowrite('deg.wav', Y_int16, sr_pesq_req, 'BitsPerSample', 16);
-
-    % Call PESQ executable (assumes it's in system path)
-    [~, cmdout] = system('pesq +16000 ref.wav deg.wav');
-
-    % Extract score from output
-    score = str2double(regexp(cmdout, 'PESQ_MOS\s*=\s*([\d.]+)', 'tokens', 'once'));
-
-    % Clean up temp files
-    delete ref.wav deg.wav;
 end

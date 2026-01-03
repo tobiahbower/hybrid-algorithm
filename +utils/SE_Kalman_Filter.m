@@ -1,17 +1,18 @@
 classdef SE_Kalman_Filter
     properties
         fs              % Sampling rate
-        p = 15          % LPC order
-        frameDur = 0.08 % Frame duration in seconds
-        overlapDur = 0.01 % Overlap duration in seconds
-        Q_pos = [-3, -0.7, 0, 1, 3, 5, 7];  % Add more aggressive options
+        p               % LPC order
+        frameDur = 0.64 % Frame duration in seconds
+        overlapDur = 0.32 % Overlap duration in seconds
+        Q_pos = [-10 -7 -5 -3, -2, -1, 0, 1, 2, 3, 5, 7, 10];  % Add more aggressive options
         enableSecondPass = true     % Toggle for second Kalman pass
         diagnostics = struct()      % Stores Q evolution, silent frames, etc.
     end
 
     methods
-        function obj = SE_Kalman_Filter(fs)
+        function obj = SE_Kalman_Filter(fs, estOrder)
             obj.fs = fs;
+            obj.p = estOrder;
         end
 
         function [enhanced] = enhance(obj, x, in)
